@@ -1,0 +1,42 @@
+<!-- Permite crear o editar el producto -->
+
+<!-- Herencia de la plantilla base -->
+{% extends 'core/base.html' %}
+
+<!-- Inicio del bloque de contenido -->
+{% block content %}
+
+<!-- Contenedor -->
+<div class="container mt-5">
+
+    <!-- Organización del formulario -->
+    <div class="col-md-6 offset-md-3">
+
+<h2>
+    <!-- Si el producto existe se puede editar -->
+    {% if form.instance.pk %}
+        Editar Producto
+    <!-- Si no existe el producto se debe crear -->
+    {% else %}
+        Crear Producto
+    {% endif %}
+</h2>
+
+<!-- Se envia información del producto al servidor incluyendo archivos (imagen) -->
+<form method="POST" enctype="multipart/form-data">
+
+    <!-- token de seguridad -->
+    {% csrf_token %}
+
+    <!-- formulario tipo parrafo -->
+    {{ form.as_p }}
+
+    <!-- botón para guardar el producto -->
+    <button class="btn btn-success">
+        Guardar Producto
+    </button>
+
+</form>
+<!-- Fin del bloque de contenido -->
+{% endblock %}
+

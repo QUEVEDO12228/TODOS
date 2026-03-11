@@ -1,0 +1,248 @@
+<!-- lista de los productos -->
+
+<!-- Herencia de la plantilla base -->
+{% extends 'core/base.html' %}
+
+<!-- Inicio del bloque de contenido -->
+{% block content %}
+
+<!-- Contenedor -->
+<div class="container mt-4">
+
+    <!-- Título -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>Productos</h2>
+        <!-- Crear producto -->
+        {% if request.user.is_staff %}
+        <a href="{% url 'lista_productos' %}crear/" class="btn btn-primary"> Crear Producto </a>
+        {% endif %}
+    </div>
+
+    <!-- Buscador y Filtros -->
+    <div class="row mb-3">
+
+        <div class="col-md-6">
+            <!-- Buscador -->
+            <input type="text" id="searchInput" class="form-control" placeholder="Buscar producto...">
+        </div>
+        {% if request.user.is_staff %}
+        <!-- filtros (habilitados, deshabilitados, todos) -->
+        <div class="col-md-6 text-end">
+
+            <a href="?filtro=activos" class="btn btn-outline-success {% if filtro == 'activos' %}active{% endif %}">
+                Habilitados
+            </a>
+
+            <a href="?filtro=deshabilitados" class="btn btn-outline-danger {% if filtro == 'deshabilitados' %}active{% endif %}">
+                Deshabilitados
+            </a>
+
+            <a href="?filtro=todos" class="btn btn-outline-secondary {% if filtro == 'todos' %}active{% endif %}">
+                Todos
+            </a>
+
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Contenedor dinámico para mostrar las card de acuerdo a la actualización dinamica del AJAX-->
+    <div id="productos-container">
+        {% include 'productos/tarjetas_lista_productos.html' %}
+    </div>
+
+</div>
+
+{% endblock %}
+
+<!-- JS -->
+{% block scripts %}
+<script>
+    /* ejecuta la página cuando tiene todo listo */
+    document.addEventListener("DOMContentLoaded", function () {
+
+        console.log("SCRIPT CARGADO");
+
+        const searchInput = document.getElementById("searchInput");
+        const resultadoDiv = document.getElementById("productos-container");
+
+        /* función que busca productos sin actualizar la pagina */
+        if (!searchInput || !resultadoDiv) return;
+
+        function fetchProductos() {
+            /* guarda lo que el usuario escribe */
+            const query = searchInput.value;
+
+            const urlParams = new URLSearchParams(window.location.search);
+            /* Determinar el filtro actual, Si no tiene filtro utiliza activos.  */
+            const filtro = urlParams.get("filtro") || "activos";
+            /* Texto ingresado para busqueda y el filtro  */
+            const url = "{% url 'buscar_productos_ajax' %}" + "?q=" + encodeURIComponent(query) + "&filtro=" + filtro;
+
+            /* Se envía la petición */
+            /* then data -> muestra de forma dinamica la información  */
+            fetch(url).then(response => response.json()).then(data => {
+                resultadoDiv.innerHTML = data.html;
+            });
+        }
+
+    searchInput.addEventListener("input", fetchProductos);
+
+
+    /* Evento del click  */
+
+    document.addEventListener("click", function (e) {
+
+        /* detecta el botón */
+
+        const toggleBtn = e.target.closest(".toggle-btn");
+
+        if (toggleBtn) {
+
+            const productoId = toggleBtn.dataset.id;
+
+            /* llamado de la vista toggle_producto.  */
+            fetch(`/productos/toggle/${productoId}/`, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": getCookie("csrftoken"),
+                    "Content-Type": "application/json"
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                /* Si es correcto  */
+                if (data.success) {
+
+                    const card = toggleBtn.closest(".card");
+                    const estadoTexto = card.querySelector(".estado-texto");
+
+                    if (data.nuevo_estado) {
+
+                        toggleBtn.classList.remove("btn-success");
+                        toggleBtn.classList.add("btn-danger");
+                        toggleBtn.textContent = "Deshabilitar";
+
+                        estadoTexto.textContent = "Activo";
+                        estadoTexto.classList.remove("text-danger");
+                        estadoTexto.classList.add("text-success");
+
+                    } else {
+
+                        toggleBtn.classList.remove("btn-danger");
+                        toggleBtn.classList.add("btn-success");
+                        toggleBtn.textContent = "Habilitar";
+
+                        estadoTexto.textContent = "Inactivo";
+                        estadoTexto.classList.remove("text-success");
+                        estadoTexto.classList.add("text-danger");
+                    }
+                    /* alerta  */
+                    Swal.fire({
+                        icon: "success",
+                        title: "Estado actualizado",
+                        timer: 1200,
+                        showConfirmButton: false
+                    });
+                }
+            });
+
+            return;
+        }
+
+        /* agregar al carrito */
+
+        const carritoBtn = e.target.closest(".agregar-carrito-btn");
+
+        if (carritoBtn) {
+
+            const productoId = carritoBtn.dataset.id;
+            const activo = carritoBtn.dataset.activo === "true";
+            const stock = parseInt(carritoBtn.dataset.stock);
+            /* Validación. Si no se encuentra activo no permite agregarlo al carrito  */
+            if (!activo) {
+                Swal.fire({
+                    icon: "error",
+                    title: "Producto inactivo",
+                    text: "No se puede agregar porque el producto está deshabilitado."
+                });
+                return;
+            }
+            /* Validación. Si no hay stock no permite agregarlo al carrito  */
+            if (stock <= 0) {
+                Swal.fire({
+                    icon: "error",
+                    title: "Sin stock",
+                    text: "No hay stock disponible."
+                });
+                return;
+            }
+
+            /* Se envía la petición al carrito (se agrega el producto al carrito)  */
+            fetch(`/carrito/agregar/${productoId}/`, {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": getCookie("csrftoken"),
+                    "Content-Type": "application/json"
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+
+                if (data.success) {
+
+                    Swal.fire({
+                        icon: "success",
+                        title: "Producto agregado",
+                        timer: 1200,
+                        showConfirmButton: false
+                    });
+
+                    const contador = document.getElementById("carrito-contador");
+                    /* Actualiza el número de elementos en el carrito de forma automatica  */
+                    contador.textContent = data.total_items;
+                    contador.style.display = "inline-block";
+
+                } else {
+
+                    Swal.fire({
+                        icon: "error",
+                        title: "No se pudo agregar",
+                        text: "Stock insuficiente"
+                    });
+                }
+            });
+
+            return;
+        }
+
+    });
+
+
+    /* Función CSRF -> obtiene el token de seguridad de Django (Django lo exige para el metodo POST) */
+
+    function getCookie(name) {
+
+        let cookieValue = null;
+
+        if (document.cookie && document.cookie !== "") {
+
+            const cookies = document.cookie.split(";");
+
+            for (let i = 0; i < cookies.length; i++) {
+
+                const cookie = cookies[i].trim();
+
+                if (cookie.substring(0, name.length + 1) === (name + "=")) {
+
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+
+        return cookieValue;
+    }
+
+});
+</script>
+{% endblock %}
